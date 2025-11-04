@@ -11,7 +11,6 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-m
 database_url = os.environ.get('DATABASE_URL')
 
 if database_url:
-    # Render использует postgres://, но SQLAlchemy требует postgresql://
     if database_url.startswith('postgres://'):
         database_url = database_url.replace('postgres://', 'postgresql://', 1)
     app.config['SQLALCHEMY_DATABASE_URI'] = database_url
@@ -56,7 +55,6 @@ class AdminUser(db.Model):
 with app.app_context():
     try:
         db.create_all()
-        # Создаем администратора по умолчанию, если его нет
         if not AdminUser.query.first():
             default_password = os.environ.get('ADMIN_PASSWORD', 'Pfizer!Soft2025')
             admin = AdminUser(
@@ -68,6 +66,25 @@ with app.app_context():
             print("✅ Default admin created: admin /", default_password)
     except Exception as e:
         print(f"❌ Database initialization error: {e}")
+
+def is_license_expired(license_obj):
+    """Проверяет истекла ли лицензия и автоматически деактивирует её"""
+    if not license_obj.expiry_date:
+        return False
+    
+    # Приводим обе даты к UTC для сравнения
+    expiry_utc = license_obj.expiry_date.replace(tzinfo=timezone.utc) if license_obj.expiry_date.tzinfo is None else license_obj.expiry_date
+    now_utc = datetime.now(timezone.utc)
+    
+    is_expired = expiry_utc < now_utc
+    
+    # Автоматически деактивируем лицензию если она истекла
+    if is_expired and license_obj.is_active:
+        license_obj.is_active = False
+        db.session.commit()
+        print(f"⚠️ License {license_obj.key} automatically deactivated due to expiry")
+    
+    return is_expired
 
 # API endpoints
 @app.route('/license', methods=['POST'])
@@ -100,17 +117,12 @@ def activate_license(key, hwid, request):
         if not license_obj:
             return jsonify({'success': False, 'error': 'Invalid license key'})
         
+        # Проверяем истекла ли лицензия
+        if is_license_expired(license_obj):
+            return jsonify({'success': False, 'error': 'License has expired and was deactivated'})
+        
         if not license_obj.is_active:
             return jsonify({'success': False, 'error': 'License is deactivated'})
-        
-        # Проверка срока действия (исправленная версия)
-        if license_obj.expiry_date:
-            # Приводим обе даты к UTC для сравнения
-            expiry_utc = license_obj.expiry_date.replace(tzinfo=timezone.utc)
-            now_utc = datetime.now(timezone.utc)
-            
-            if expiry_utc < now_utc:
-                return jsonify({'success': False, 'error': 'License has expired'})
         
         if license_obj.hwid:
             if license_obj.hwid == hwid:
@@ -155,16 +167,12 @@ def validate_license(key, hwid):
         if not license_obj:
             return jsonify({'valid': False, 'error': 'Invalid license key'})
         
+        # Проверяем истекла ли лицензия
+        if is_license_expired(license_obj):
+            return jsonify({'valid': False, 'error': 'License has expired and was deactivated'})
+        
         if not license_obj.is_active:
             return jsonify({'valid': False, 'error': 'License is deactivated'})
-        
-        # Проверка срока действия (исправленная версия)
-        if license_obj.expiry_date:
-            expiry_utc = license_obj.expiry_date.replace(tzinfo=timezone.utc)
-            now_utc = datetime.now(timezone.utc)
-            
-            if expiry_utc < now_utc:
-                return jsonify({'valid': False, 'error': 'License has expired'})
         
         if not license_obj.hwid:
             return jsonify({'valid': False, 'error': 'License not activated'})
@@ -214,14 +222,25 @@ def admin_dashboard():
             'pending_requests': ActivationRequest.query.filter_by(status='pending').count()
         }
         
-        # Просто передаем текущее время без сравнения в шаблоне
-        now = datetime.utcnow()
+        # Проверяем все лицензии на истечение срока
+        now_utc = datetime.now(timezone.utc)
+        expired_count = 0
+        for license in licenses:
+            if license.expiry_date:
+                expiry_utc = license.expiry_date.replace(tzinfo=timezone.utc) if license.expiry_date.tzinfo is None else license.expiry_date
+                if expiry_utc < now_utc and license.is_active:
+                    license.is_active = False
+                    expired_count += 1
+        
+        if expired_count > 0:
+            db.session.commit()
+            print(f"⚠️ Automatically deactivated {expired_count} expired licenses")
         
         return render_template('admin_dashboard.html', 
                              licenses=licenses, 
                              activation_requests=activation_requests,
                              stats=stats,
-                             now=now)
+                             now=now_utc)
     except Exception as e:
         return f"Error loading dashboard: {str(e)}", 500
 
@@ -238,18 +257,15 @@ def add_license():
         if not key:
             return jsonify({'success': False, 'error': 'No key provided'})
         
-        # Проверка формата ключа (26 символов!)
         if not (len(key) == 26 and key.startswith('PFIZER-')):
             return jsonify({'success': False, 'error': 'Invalid key format. Use: PFIZER-XXXX-XXXX-XXXX-XXXX'})
         
         if License.query.filter_by(key=key).first():
             return jsonify({'success': False, 'error': 'Key already exists'})
         
-        # Преобразование даты окончания
         expiry_date = None
         if expiry_date_str:
             try:
-                # Добавляем времяzone если его нет
                 if 'Z' not in expiry_date_str and '+' not in expiry_date_str:
                     expiry_date_str += 'Z'
                 expiry_date = datetime.fromisoformat(expiry_date_str.replace('Z', '+00:00'))
@@ -283,7 +299,6 @@ def bulk_add_licenses():
         errors = []
         
         for key in keys:
-            # Проверка формата ключа (26 символов!)
             if len(key) == 26 and key.startswith('PFIZER-'):
                 if not License.query.filter_by(key=key).first():
                     license_obj = License(key=key)
@@ -316,6 +331,10 @@ def process_request(request_id):
         if action == 'approve':
             license_obj = License.query.filter_by(key=activation_req.key).first()
             if license_obj:
+                # Проверяем не истекла ли лицензия перед активацией
+                if is_license_expired(license_obj):
+                    return jsonify({'success': False, 'error': 'Cannot approve - license has expired'})
+                
                 license_obj.hwid = activation_req.hwid
                 license_obj.activation_date = datetime.utcnow()
                 activation_req.status = 'approved'
@@ -340,6 +359,11 @@ def toggle_license(license_id):
     
     try:
         license_obj = License.query.get_or_404(license_id)
+        
+        # Не позволяем активировать истекшую лицензию
+        if is_license_expired(license_obj) and not license_obj.is_active:
+            return jsonify({'success': False, 'error': 'Cannot activate expired license'})
+        
         license_obj.is_active = not license_obj.is_active
         db.session.commit()
         
