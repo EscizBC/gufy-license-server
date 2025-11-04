@@ -22,7 +22,6 @@ router.post('/', async (req, res) => {
                 return res.json({ success: false, error: 'Ключ деактивирован' });
             }
             
-            // Проверка срока действия
             if (license.expires_at && new Date() > license.expires_at) {
                 license.is_active = false;
                 await license.save();
@@ -33,7 +32,6 @@ router.post('/', async (req, res) => {
                 return res.json({ success: false, error: 'Ключ уже активирован на другом устройстве' });
             }
             
-            // Активируем лицензию
             license.hwid = hwid;
             license.activation_date = new Date();
             await license.save();
@@ -62,7 +60,6 @@ router.post('/', async (req, res) => {
                 return res.json({ valid: false, error: 'Лицензия деактивирована' });
             }
             
-            // Проверяем срок действия
             if (license.expires_at && new Date() > license.expires_at) {
                 license.is_active = false;
                 await license.save();
@@ -104,7 +101,6 @@ router.post('/admin', async (req, res) => {
     try {
         const { key, key_name, expires_at, notes } = req.body;
         
-        // Валидация формата ключа
         const keyRegex = /^PFIZER-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
         if (!keyRegex.test(key)) {
             return res.status(400).json({ error: 'Неверный формат ключа' });
@@ -155,19 +151,6 @@ router.delete('/admin/:id', async (req, res) => {
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: 'Ошибка удаления ключа' });
-    }
-});
-
-// Миграция для существующих ключей
-router.get('/admin/migrate', async (req, res) => {
-    try {
-        const result = await License.updateMany(
-            { key_name: { $exists: false } },
-            { $set: { key_name: "Без названия" } }
-        );
-        res.json({ success: true, updated: result.modifiedCount });
-    } catch (error) {
-        res.status(500).json({ error: 'Ошибка миграции' });
     }
 });
 

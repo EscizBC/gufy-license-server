@@ -27,70 +27,175 @@
         .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
         .stat-card { background: linear-gradient(135deg, #667eea, #764ba2); padding: 20px; border-radius: 10px; text-align: center; }
         .loading { text-align: center; padding: 20px; color: #667eea; }
+        .hidden { display: none; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🔐 Админ-панель Pfizer Mailer</h1>
-            <p>Управление лицензиями и ключами доступа</p>
-        </div>
+    <div id="app">
+        <div class="container">
+            <div class="header">
+                <h1>🔐 Админ-панель Pfizer Mailer</h1>
+                <p>Войдите в систему</p>
+            </div>
+            
+            <div class="card" id="loginCard">
+                <h2>🔒 Авторизация</h2>
+                <div class="form-group">
+                    <label>Логин:</label>
+                    <input type="text" id="username" value="admin" readonly>
+                </div>
+                <div class="form-group">
+                    <label>Пароль:</label>
+                    <input type="password" id="password" placeholder="Введите пароль">
+                </div>
+                <button class="btn" onclick="login()">🚀 Войти</button>
+                <div id="loginError" style="color: #ff6b6b; margin-top: 15px;"></div>
+            </div>
 
-        <div class="stats" id="stats">
-            <div class="stat-card">
-                <h3>Всего ключей</h3>
-                <p id="totalKeys">0</p>
-            </div>
-            <div class="stat-card">
-                <h3>Активных</h3>
-                <p id="activeKeys">0</p>
-            </div>
-            <div class="stat-card">
-                <h3>Активированных</h3>
-                <p id="activatedKeys">0</p>
-            </div>
-        </div>
+            <div id="adminPanel" class="hidden">
+                <div class="stats" id="stats">
+                    <div class="stat-card">
+                        <h3>Всего ключей</h3>
+                        <p id="totalKeys">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Активных</h3>
+                        <p id="activeKeys">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Активированных</h3>
+                        <p id="activatedKeys">0</p>
+                    </div>
+                </div>
 
-        <div class="card">
-            <h2>➕ Создать новый ключ</h2>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Ключ:</label>
-                    <input type="text" id="newKey" placeholder="PFIZER-XXXX-XXXX-XXXX-XXXX" pattern="^PFIZER-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$" required>
+                <div class="card">
+                    <h2>➕ Создать новый ключ</h2>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Ключ:</label>
+                            <input type="text" id="newKey" placeholder="PFIZER-XXXX-XXXX-XXXX-XXXX" pattern="^PFIZER-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Название ключа:</label>
+                            <input type="text" id="keyName" placeholder="Например: Основной ключ" maxlength="100">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Дата истечения:</label>
+                            <input type="datetime-local" id="expiresAt">
+                        </div>
+                        <div class="form-group">
+                            <label>Примечания:</label>
+                            <textarea id="notes" placeholder="Дополнительная информация" rows="2"></textarea>
+                        </div>
+                    </div>
+                    <button class="btn" onclick="createLicense()">🎯 Создать ключ</button>
                 </div>
-                <div class="form-group">
-                    <label>Название ключа:</label>
-                    <input type="text" id="keyName" placeholder="Например: Основной ключ" maxlength="100">
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Дата истечения:</label>
-                    <input type="datetime-local" id="expiresAt">
-                </div>
-                <div class="form-group">
-                    <label>Примечания:</label>
-                    <textarea id="notes" placeholder="Дополнительная информация" rows="2"></textarea>
-                </div>
-            </div>
-            <button class="btn" onclick="createLicense()">🎯 Создать ключ</button>
-        </div>
 
-        <div class="card">
-            <h2>📋 Список ключей</h2>
-            <div class="loading" id="loading">Загрузка ключей...</div>
-            <div id="licensesList"></div>
+                <div class="card">
+                    <h2>📋 Список ключей</h2>
+                    <div class="loading" id="loading">Загрузка ключей...</div>
+                    <div id="licensesList"></div>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
         const API_BASE = window.location.origin + '/api/licenses';
-        
-        // Загрузить статистику
-        async function loadStats() {
+        let adminPassword = '';
+
+        // Проверка аутентификации при загрузке
+        document.addEventListener('DOMContentLoaded', function() {
+            checkAuth();
+        });
+
+        async function checkAuth() {
             try {
                 const response = await fetch(`${API_BASE}/admin`);
+                if (response.status === 401) {
+                    showLoginForm();
+                    return false;
+                }
                 const licenses = await response.json();
+                showAdminPanel();
+                loadStats(licenses);
+                loadLicenses(licenses);
+                return true;
+            } catch (error) {
+                showLoginForm();
+                return false;
+            }
+        }
+
+        function showLoginForm() {
+            document.getElementById('loginCard').classList.remove('hidden');
+            document.getElementById('adminPanel').classList.add('hidden');
+        }
+
+        function showAdminPanel() {
+            document.getElementById('loginCard').classList.add('hidden');
+            document.getElementById('adminPanel').classList.remove('hidden');
+        }
+
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('loginError');
+            
+            if (!password) {
+                errorDiv.textContent = 'Введите пароль';
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    adminPassword = password;
+                    localStorage.setItem('admin_password', password);
+                    checkAuth();
+                } else {
+                    errorDiv.textContent = result.error || 'Ошибка входа';
+                }
+            } catch (error) {
+                errorDiv.textContent = 'Ошибка соединения';
+            }
+        }
+
+        function getAuthHeaders() {
+            if (adminPassword) {
+                const credentials = btoa(`admin:${adminPassword}`);
+                return { 'Authorization': `Basic ${credentials}` };
+            }
+            const savedPassword = localStorage.getItem('admin_password');
+            if (savedPassword) {
+                adminPassword = savedPassword;
+                const credentials = btoa(`admin:${savedPassword}`);
+                return { 'Authorization': `Basic ${credentials}` };
+            }
+            return {};
+        }
+
+        async function loadStats(licenses = null) {
+            try {
+                if (!licenses) {
+                    const response = await fetch(`${API_BASE}/admin`, {
+                        headers: getAuthHeaders()
+                    });
+                    if (response.status === 401) {
+                        showLoginForm();
+                        return;
+                    }
+                    licenses = await response.json();
+                }
                 
                 const total = licenses.length;
                 const active = licenses.filter(l => l.is_active).length;
@@ -103,12 +208,19 @@
                 console.error('Ошибка загрузки статистики:', error);
             }
         }
-        
-        // Загрузить все ключи
-        async function loadLicenses() {
+
+        async function loadLicenses(licenses = null) {
             try {
-                const response = await fetch(`${API_BASE}/admin`);
-                const licenses = await response.json();
+                if (!licenses) {
+                    const response = await fetch(`${API_BASE}/admin`, {
+                        headers: getAuthHeaders()
+                    });
+                    if (response.status === 401) {
+                        showLoginForm();
+                        return;
+                    }
+                    licenses = await response.json();
+                }
                 
                 let html = `
                     <table>
@@ -161,8 +273,7 @@
                 console.error('Ошибка загрузки ключей:', error);
             }
         }
-        
-        // Создать новый ключ
+
         async function createLicense() {
             const key = document.getElementById('newKey').value;
             const keyName = document.getElementById('keyName').value;
@@ -177,7 +288,10 @@
             try {
                 const response = await fetch(`${API_BASE}/admin`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        ...getAuthHeaders()
+                    },
                     body: JSON.stringify({ 
                         key, 
                         key_name: keyName || "Без названия",
@@ -190,12 +304,10 @@
                 
                 if (result.success) {
                     alert('✅ Ключ успешно создан!');
-                    // Очищаем форму
                     document.getElementById('newKey').value = '';
                     document.getElementById('keyName').value = '';
                     document.getElementById('expiresAt').value = '';
                     document.getElementById('notes').value = '';
-                    // Перезагружаем данные
                     loadLicenses();
                     loadStats();
                 } else {
@@ -205,27 +317,31 @@
                 alert('❌ Ошибка создания ключа: ' + error);
             }
         }
-        
-        // Обновить ключ
+
         async function updateLicense(id, field, value) {
             try {
                 const updateData = { [field]: value };
                 await fetch(`${API_BASE}/admin/${id}`, {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        ...getAuthHeaders()
+                    },
                     body: JSON.stringify(updateData)
                 });
             } catch (error) {
                 console.error('Ошибка обновления ключа:', error);
             }
         }
-        
-        // Включить/выключить ключ
+
         async function toggleLicense(id, newStatus) {
             try {
                 await fetch(`${API_BASE}/admin/${id}`, {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        ...getAuthHeaders()
+                    },
                     body: JSON.stringify({ is_active: newStatus })
                 });
                 
@@ -236,15 +352,17 @@
                 alert('❌ Ошибка обновления ключа: ' + error);
             }
         }
-        
-        // Удалить ключ
+
         async function deleteLicense(id) {
             if (!confirm('❌ Вы уверены, что хотите удалить этот ключ? Это действие нельзя отменить!')) {
                 return;
             }
             
             try {
-                await fetch(`${API_BASE}/admin/${id}`, { method: 'DELETE' });
+                await fetch(`${API_BASE}/admin/${id}`, { 
+                    method: 'DELETE',
+                    headers: getAuthHeaders()
+                });
                 alert('✅ Ключ удален!');
                 loadLicenses();
                 loadStats();
@@ -252,12 +370,6 @@
                 alert('❌ Ошибка удаления ключа: ' + error);
             }
         }
-        
-        // Инициализация
-        document.addEventListener('DOMContentLoaded', function() {
-            loadLicenses();
-            loadStats();
-        });
     </script>
 </body>
 </html>

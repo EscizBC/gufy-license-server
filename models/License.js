@@ -38,7 +38,6 @@ const licenseSchema = new mongoose.Schema({
     }
 });
 
-// Индексы для оптимизации
 licenseSchema.index({ key: 1 });
 licenseSchema.index({ hwid: 1 });
 licenseSchema.index({ is_active: 1 });

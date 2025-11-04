@@ -4,11 +4,7 @@ services:
     env: node
     plan: free
     buildCommand: npm install
-    startCommand: npm start
+    startCommand: node server.js
     envVars:
       - key: NODE_ENV
         value: production
-      - key: MONGODB_URI
-        fromDatabase:
-          name: pfizer-licenses-db
-          property: connectionString
