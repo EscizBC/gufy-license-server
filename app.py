@@ -103,9 +103,14 @@ def activate_license(key, hwid, request):
         if not license_obj.is_active:
             return jsonify({'success': False, 'error': 'License is deactivated'})
         
-        # Проверка срока действия
-        if license_obj.expiry_date and license_obj.expiry_date < datetime.now(timezone.utc):
-            return jsonify({'success': False, 'error': 'License has expired'})
+        # Проверка срока действия (исправленная версия)
+        if license_obj.expiry_date:
+            # Приводим обе даты к UTC для сравнения
+            expiry_utc = license_obj.expiry_date.replace(tzinfo=timezone.utc)
+            now_utc = datetime.now(timezone.utc)
+            
+            if expiry_utc < now_utc:
+                return jsonify({'success': False, 'error': 'License has expired'})
         
         if license_obj.hwid:
             if license_obj.hwid == hwid:
@@ -153,9 +158,13 @@ def validate_license(key, hwid):
         if not license_obj.is_active:
             return jsonify({'valid': False, 'error': 'License is deactivated'})
         
-        # Проверка срока действия
-        if license_obj.expiry_date and license_obj.expiry_date < datetime.now(timezone.utc):
-            return jsonify({'valid': False, 'error': 'License has expired'})
+        # Проверка срока действия (исправленная версия)
+        if license_obj.expiry_date:
+            expiry_utc = license_obj.expiry_date.replace(tzinfo=timezone.utc)
+            now_utc = datetime.now(timezone.utc)
+            
+            if expiry_utc < now_utc:
+                return jsonify({'valid': False, 'error': 'License has expired'})
         
         if not license_obj.hwid:
             return jsonify({'valid': False, 'error': 'License not activated'})
@@ -205,11 +214,14 @@ def admin_dashboard():
             'pending_requests': ActivationRequest.query.filter_by(status='pending').count()
         }
         
+        # Исправляем проблему с часовыми поясами
+        now = datetime.now(timezone.utc)
+        
         return render_template('admin_dashboard.html', 
                              licenses=licenses, 
                              activation_requests=activation_requests,
                              stats=stats,
-                             now=datetime.now(timezone.utc))
+                             now=now)
     except Exception as e:
         return f"Error loading dashboard: {str(e)}", 500
 
@@ -226,10 +238,9 @@ def add_license():
         if not key:
             return jsonify({'success': False, 'error': 'No key provided'})
         
-        # Проверка формата ключа
+        # Проверка формата ключа (26 символов!)
         if not (len(key) == 26 and key.startswith('PFIZER-')):
             return jsonify({'success': False, 'error': 'Invalid key format. Use: PFIZER-XXXX-XXXX-XXXX-XXXX'})
-        
         
         if License.query.filter_by(key=key).first():
             return jsonify({'success': False, 'error': 'Key already exists'})
@@ -272,13 +283,14 @@ def bulk_add_licenses():
         errors = []
         
         for key in keys:
+            # Проверка формата ключа (26 символов!)
             if len(key) == 26 and key.startswith('PFIZER-'):
                 if not License.query.filter_by(key=key).first():
                     license_obj = License(key=key)
                     db.session.add(license_obj)
                     added += 1
                 else:
-                    errors.append(f"Invalid key format: {key}")
+                    errors.append(f"Key {key} already exists")
             else:
                 errors.append(f"Invalid key format: {key}")
         
