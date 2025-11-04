@@ -328,17 +328,25 @@
         // Add single license
         document.getElementById('addLicenseForm').onsubmit = async function(e) {
             e.preventDefault();
+            
             const formData = new FormData(this);
             
-            const response = await fetch('/admin/add_license', {
-                method: 'POST',
-                body: formData
-            });
-            
-            const result = await response.json();
-            alert(result.message);
-            if (result.success) {
-                location.reload();
+            try {
+                const response = await fetch('/admin/add_license', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✅ ' + result.message);
+                    location.reload();
+                } else {
+                    alert('❌ Ошибка: ' + result.error);
+                }
+            } catch (error) {
+                alert('❌ Ошибка сети: ' + error.message);
             }
         };
 
@@ -346,25 +354,33 @@
         async function bulkAddLicenses() {
             const keys = document.getElementById('bulkKeys').value;
             if (!keys) {
-                alert('Пожалуйста, введите ключи');
+                alert('❌ Пожалуйста, введите ключи');
                 return;
             }
             
             const formData = new FormData();
             formData.append('keys', keys);
             
-            const response = await fetch('/admin/bulk_add_licenses', {
-                method: 'POST',
-                body: formData
-            });
-            
-            const result = await response.json();
-            alert(result.message);
-            if (result.errors && result.errors.length > 0) {
-                alert('Ошибки:\n' + result.errors.join('\n'));
-            }
-            if (result.success) {
-                location.reload();
+            try {
+                const response = await fetch('/admin/bulk_add_licenses', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    let message = '✅ ' + result.message;
+                    if (result.errors && result.errors.length > 0) {
+                        message += '\n\nОшибки:\n' + result.errors.join('\n');
+                    }
+                    alert(message);
+                    location.reload();
+                } else {
+                    alert('❌ Ошибка: ' + result.error);
+                }
+            } catch (error) {
+                alert('❌ Ошибка сети: ' + error.message);
             }
         }
 
@@ -373,45 +389,66 @@
             const formData = new FormData();
             formData.append('action', action);
             
-            const response = await fetch(`/admin/process_request/${requestId}`, {
-                method: 'POST',
-                body: formData
-            });
-            
-            const result = await response.json();
-            alert(result.message);
-            if (result.success) {
-                location.reload();
+            try {
+                const response = await fetch(`/admin/process_request/${requestId}`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✅ ' + result.message);
+                    location.reload();
+                } else {
+                    alert('❌ Ошибка: ' + result.error);
+                }
+            } catch (error) {
+                alert('❌ Ошибка сети: ' + error.message);
             }
         }
 
         // Toggle license status
         async function toggleLicense(licenseId) {
-            const response = await fetch(`/admin/toggle_license/${licenseId}`, {
-                method: 'POST'
-            });
-            
-            const result = await response.json();
-            alert(result.message);
-            if (result.success) {
-                location.reload();
+            try {
+                const response = await fetch(`/admin/toggle_license/${licenseId}`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✅ ' + result.message);
+                    location.reload();
+                } else {
+                    alert('❌ Ошибка: ' + result.error);
+                }
+            } catch (error) {
+                alert('❌ Ошибка сети: ' + error.message);
             }
         }
 
         // Delete license
         async function deleteLicense(licenseId) {
-            if (!confirm('Вы уверены, что хотите удалить эту лицензию?')) {
+            if (!confirm('❓ Вы уверены, что хотите удалить эту лицензию?')) {
                 return;
             }
             
-            const response = await fetch(`/admin/delete_license/${licenseId}`, {
-                method: 'POST'
-            });
-            
-            const result = await response.json();
-            alert(result.message);
-            if (result.success) {
-                location.reload();
+            try {
+                const response = await fetch(`/admin/delete_license/${licenseId}`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✅ ' + result.message);
+                    location.reload();
+                } else {
+                    alert('❌ Ошибка: ' + result.error);
+                }
+            } catch (error) {
+                alert('❌ Ошибка сети: ' + error.message);
             }
         }
 
@@ -419,7 +456,10 @@
         document.addEventListener('DOMContentLoaded', function() {
             const now = new Date();
             now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-            document.querySelector('input[type="datetime-local"]').min = now.toISOString().slice(0, 16);
+            const datetimeInput = document.querySelector('input[type="datetime-local"]');
+            if (datetimeInput) {
+                datetimeInput.min = now.toISOString().slice(0, 16);
+            }
         });
     </script>
 </body>
