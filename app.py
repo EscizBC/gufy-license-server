@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timezone
 import secrets
 import hashlib
 import os
@@ -26,12 +26,14 @@ db = SQLAlchemy(app)
 # Модели базы данных
 class License(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=True)  # Краткое имя лицензии
     key = db.Column(db.String(50), unique=True, nullable=False)
     hwid = db.Column(db.String(255), nullable=True)
     is_active = db.Column(db.Boolean, default=True)
     activation_date = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_validation = db.Column(db.DateTime, nullable=True)
+    expiry_date = db.Column(db.DateTime, nullable=True)  # Срок действия
 
 class ActivationRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -88,6 +90,10 @@ def activate_license(key, hwid, request):
     if not license_obj.is_active:
         return jsonify({'success': False, 'error': 'License is deactivated'})
     
+    # Проверка срока действия
+    if license_obj.expiry_date and license_obj.expiry_date < datetime.now(timezone.utc):
+        return jsonify({'success': False, 'error': 'License has expired'})
+    
     if license_obj.hwid:
         if license_obj.hwid == hwid:
             return jsonify({
@@ -130,6 +136,10 @@ def validate_license(key, hwid):
     
     if not license_obj.is_active:
         return jsonify({'valid': False, 'error': 'License is deactivated'})
+    
+    # Проверка срока действия
+    if license_obj.expiry_date and license_obj.expiry_date < datetime.now(timezone.utc):
+        return jsonify({'valid': False, 'error': 'License has expired'})
     
     if not license_obj.hwid:
         return jsonify({'valid': False, 'error': 'License not activated'})
@@ -179,25 +189,41 @@ def admin_dashboard():
     return render_template('admin_dashboard.html', 
                          licenses=licenses, 
                          activation_requests=activation_requests,
-                         stats=stats)
+                         stats=stats,
+                         now=datetime.now(timezone.utc))
 
 @app.route('/admin/add_license', methods=['POST'])
 def add_license():
     if not session.get('admin_logged_in'):
         return jsonify({'success': False, 'error': 'Not authorized'})
     
+    name = request.form.get('name')
     key = request.form.get('key')
+    expiry_date_str = request.form.get('expiry_date')
+    
     if not key:
         return jsonify({'success': False, 'error': 'No key provided'})
     
-    # ИЗМЕНИ ЭТУ СТРОКУ - было 25, стало 24:
-    if not (len(key) == 26 and key.startswith('PFIZER-')):
+    # Проверка формата ключа
+    if not (len(key) == 25 and key.startswith('PFIZER-')):
         return jsonify({'success': False, 'error': 'Invalid key format. Use: PFIZER-XXXX-XXXX-XXXX-XXXX'})
     
     if License.query.filter_by(key=key).first():
         return jsonify({'success': False, 'error': 'Key already exists'})
     
-    license_obj = License(key=key)
+    # Преобразование даты окончания
+    expiry_date = None
+    if expiry_date_str:
+        try:
+            expiry_date = datetime.fromisoformat(expiry_date_str.replace('Z', '+00:00'))
+        except ValueError:
+            return jsonify({'success': False, 'error': 'Invalid expiry date format'})
+    
+    license_obj = License(
+        name=name,
+        key=key,
+        expiry_date=expiry_date
+    )
     db.session.add(license_obj)
     db.session.commit()
     
@@ -217,8 +243,7 @@ def bulk_add_licenses():
     errors = []
     
     for key in keys:
-        # ИЗМЕНИ ЭТУ СТРОКУ - было 25, стало 24:
-        if not (len(key) == 26 and key.startswith('PFIZER-')):
+        if len(key) == 25 and key.startswith('PFIZER-'):
             if not License.query.filter_by(key=key).first():
                 license_obj = License(key=key)
                 db.session.add(license_obj)
