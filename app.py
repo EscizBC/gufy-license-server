@@ -67,23 +67,49 @@ with app.app_context():
     except Exception as e:
         print(f"❌ Database initialization error: {e}")
 
+def check_all_licenses_expiry():
+    """Проверяет все лицензии на истечение срока"""
+    try:
+        licenses = License.query.all()
+        now = datetime.utcnow()
+        expired_count = 0
+        
+        for license in licenses:
+            if license.expiry_date and license.expiry_date < now and license.is_active:
+                license.is_active = False
+                expired_count += 1
+                print(f"⏰ License {license.key} expired and deactivated")
+        
+        if expired_count > 0:
+            db.session.commit()
+            print(f"✅ Deactivated {expired_count} expired licenses")
+            
+        return expired_count
+    except Exception as e:
+        print(f"❌ Error checking licenses expiry: {e}")
+        return 0
+
 def is_license_expired(license_obj):
     """Проверяет истекла ли лицензия и автоматически деактивирует её"""
     if not license_obj.expiry_date:
         return False
     
-    is_expired = license_obj.expiry_date < datetime.utcnow()
+    now = datetime.utcnow()
+    is_expired = license_obj.expiry_date < now
     
     if is_expired and license_obj.is_active:
         license_obj.is_active = False
         db.session.commit()
-        print(f"⚠️ License {license_obj.key} automatically deactivated due to expiry")
+        print(f"⏰ License {license_obj.key} automatically deactivated due to expiry")
     
     return is_expired
 
 # API endpoints
 @app.route('/license', methods=['POST'])
 def license_api():
+    # Сначала проверяем все лицензии на истечение срока
+    check_all_licenses_expiry()
+    
     try:
         data = request.get_json()
         if not data:
@@ -106,6 +132,9 @@ def license_api():
         return jsonify({'success': False, 'error': f'Server error: {str(e)}'})
 
 def activate_license(key, hwid, request):
+    # Проверяем все лицензии на истечение срока
+    check_all_licenses_expiry()
+    
     try:
         license_obj = License.query.filter_by(key=key).first()
         
@@ -155,6 +184,9 @@ def activate_license(key, hwid, request):
         return jsonify({'success': False, 'error': f'Activation error: {str(e)}'})
 
 def validate_license(key, hwid):
+    # Проверяем все лицензии на истечение срока
+    check_all_licenses_expiry()
+    
     try:
         license_obj = License.query.filter_by(key=key).first()
         
@@ -207,6 +239,9 @@ def admin_dashboard():
         return redirect(url_for('admin_login'))
     
     try:
+        # Проверяем все лицензии на истечение срока
+        check_all_licenses_expiry()
+        
         licenses = License.query.all()
         activation_requests = ActivationRequest.query.filter_by(status='pending').all()
         stats = {
@@ -217,24 +252,11 @@ def admin_dashboard():
         
         now = datetime.utcnow()
         
-        expired_count = 0
-        for license in licenses:
-            if license.expiry_date and license.expiry_date < now and license.is_active:
-                license.is_active = False
-                expired_count += 1
-        
-        if expired_count > 0:
-            db.session.commit()
-            print(f"⚠️ Automatically deactivated {expired_count} expired licenses")
-        
-        # Добавляем timezone для шаблона
-        from datetime import timezone
         return render_template('admin_dashboard.html', 
                              licenses=licenses, 
                              activation_requests=activation_requests,
                              stats=stats,
-                             now=now,
-                             timezone=timezone)
+                             now=now)
     except Exception as e:
         return f"Error loading dashboard: {str(e)}", 500
 
@@ -319,6 +341,9 @@ def process_request(request_id):
         return jsonify({'success': False, 'error': 'Not authorized'})
     
     try:
+        # Проверяем все лицензии на истечение срока
+        check_all_licenses_expiry()
+        
         action = request.form.get('action')
         activation_req = ActivationRequest.query.get_or_404(request_id)
         
@@ -351,6 +376,9 @@ def toggle_license(license_id):
         return jsonify({'success': False, 'error': 'Not authorized'})
     
     try:
+        # Проверяем все лицензии на истечение срока
+        check_all_licenses_expiry()
+        
         license_obj = License.query.get_or_404(license_id)
         
         if is_license_expired(license_obj) and not license_obj.is_active:
