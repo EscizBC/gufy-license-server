@@ -294,8 +294,16 @@
                         <td>
                             {% if not license.is_active %}
                                 <span class="status-inactive">❌ Неактивна</span>
-                            {% elif license.expiry_date and license.expiry_date < now %}
-                                <span class="status-expired">⏰ Истекла</span>
+                            {% elif license.expiry_date %}
+                                {# Проверяем истекла ли лицензия на сервере #}
+                                {% set is_expired = license.expiry_date < now %}
+                                {% if is_expired %}
+                                    <span class="status-expired">⏰ Истекла</span>
+                                {% elif license.hwid %}
+                                    <span class="status-active">✅ Активна</span>
+                                {% else %}
+                                    <span style="color: #667eea;">⏳ Ожидает</span>
+                                {% endif %}
                             {% elif license.hwid %}
                                 <span class="status-active">✅ Активна</span>
                             {% else %}
@@ -304,8 +312,10 @@
                         </td>
                         <td>
                             {% if license.expiry_date %}
-                                <span class="expiry-date {% if license.expiry_date < now %}expired{% endif %}">
+                                {% set is_expired = license.expiry_date < now %}
+                                <span class="expiry-date {% if is_expired %}expired{% endif %}">
                                     {{ license.expiry_date.strftime('%Y-%m-%d %H:%M') }}
+                                    {% if is_expired %} (Истекла){% endif %}
                                 </span>
                             {% else %}
                                 <span style="color: #777;">—</span>

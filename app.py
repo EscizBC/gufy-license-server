@@ -214,8 +214,8 @@ def admin_dashboard():
             'pending_requests': ActivationRequest.query.filter_by(status='pending').count()
         }
         
-        # Исправляем проблему с часовыми поясами
-        now = datetime.now(timezone.utc)
+        # Просто передаем текущее время без сравнения в шаблоне
+        now = datetime.utcnow()
         
         return render_template('admin_dashboard.html', 
                              licenses=licenses, 
