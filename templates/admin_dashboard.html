@@ -77,6 +77,9 @@
             border: 2px solid #667eea;
             box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }
+        .full-width {
+            grid-column: 1 / -1;
+        }
         .section h2 {
             color: #667eea;
             margin-bottom: 20px;
@@ -113,6 +116,7 @@
         .btn-toggle { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
         .btn-delete { background: linear-gradient(135deg, #dc3545, #c82333); color: white; }
         .btn-add { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 12px 20px; }
+        .btn-copy { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 6px 12px; font-size: 10px; }
         .btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 8px rgba(0,0,0,0.3);
@@ -154,6 +158,18 @@
             border-radius: 4px;
             font-size: 12px;
         }
+        .hwid {
+            font-family: 'Courier New', monospace;
+            background: rgba(0,0,0,0.3);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            display: inline-block;
+        }
         .expiry-date {
             font-size: 11px;
             color: #ccc;
@@ -174,6 +190,10 @@
             margin-top: 25px;
             padding-top: 25px;
             border-top: 2px solid #333;
+        }
+        .copy-btn {
+            margin-left: 5px;
+            cursor: pointer;
         }
     </style>
 </head>
@@ -251,7 +271,10 @@
                     {% for req in activation_requests %}
                     <tr>
                         <td class="license-key">{{ req.key }}</td>
-                        <td title="{{ req.hwid }}">{{ req.hwid[:20] }}...</td>
+                        <td>
+                            <span class="hwid" title="{{ req.hwid }}">{{ req.hwid[:20] }}...</span>
+                            <button class="btn btn-copy" onclick="copyToClipboard('{{ req.hwid }}')">📋</button>
+                        </td>
                         <td>{{ req.ip_address }}</td>
                         <td>{{ req.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
                         <td>
@@ -268,15 +291,17 @@
         </div>
 
         <!-- License Management -->
-        <div class="section">
+        <div class="section full-width">
             <h2>🔑 Управление лицензиями</h2>
             <table>
                 <thead>
                     <tr>
                         <th>Имя</th>
                         <th>Ключ</th>
+                        <th>HWID</th>
                         <th>Статус</th>
                         <th>Действует до</th>
+                        <th>Активация</th>
                         <th>Действия</th>
                     </tr>
                 </thead>
@@ -291,6 +316,14 @@
                             {% endif %}
                         </td>
                         <td class="license-key">{{ license.key }}</td>
+                        <td>
+                            {% if license.hwid %}
+                                <span class="hwid" title="{{ license.hwid }}">{{ license.hwid[:20] }}...</span>
+                                <button class="btn btn-copy" onclick="copyToClipboard('{{ license.hwid }}')">📋</button>
+                            {% else %}
+                                <span style="color: #777;">—</span>
+                            {% endif %}
+                        </td>
                         <td>
                             {% if license.expiry_date and license.expiry_date < now %}
                                 <span class="status-expired">⏰ ИСТЕКЛА</span>
@@ -313,6 +346,13 @@
                                         {{ license.expiry_date.strftime('%Y-%m-%d %H:%M') }}
                                     </span>
                                 {% endif %}
+                            {% else %}
+                                <span style="color: #777;">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if license.activation_date %}
+                                {{ license.activation_date.strftime('%Y-%m-%d %H:%M') }}
                             {% else %}
                                 <span style="color: #777;">—</span>
                             {% endif %}
@@ -460,6 +500,15 @@
             } catch (error) {
                 alert('❌ Ошибка сети: ' + error.message);
             }
+        }
+
+        // Copy to clipboard function
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(function() {
+                alert('✅ HWID скопирован в буфер обмена: ' + text);
+            }, function(err) {
+                alert('❌ Ошибка копирования: ' + err);
+            });
         }
 
         // Set min datetime for expiry date to current time
