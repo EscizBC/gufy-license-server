@@ -292,51 +292,34 @@
                         </td>
                         <td class="license-key">{{ license.key }}</td>
                         <td>
-                            {% if license.expiry_date %}
-                                {% set expiry_utc = license.expiry_date.replace(tzinfo=timezone.utc) if license.expiry_date.tzinfo is None else license.expiry_date %}
-                                {% set is_expired = expiry_utc < now %}
-                                {% if is_expired %}
-                                    <span class="status-expired">⏰ ИСТЕКЛА</span>
-                                {% elif not license.is_active %}
-                                    <span class="status-inactive">❌ Неактивна</span>
-                                {% elif license.hwid %}
-                                    <span class="status-active">✅ Активна</span>
-                                {% else %}
-                                    <span style="color: #667eea;">⏳ Ожидает</span>
-                                {% endif %}
+                            {% if license.expiry_date and license.expiry_date < now %}
+                                <span class="status-expired">⏰ ИСТЕКЛА</span>
+                            {% elif not license.is_active %}
+                                <span class="status-inactive">❌ Неактивна</span>
+                            {% elif license.hwid %}
+                                <span class="status-active">✅ Активна</span>
                             {% else %}
-                                {% if not license.is_active %}
-                                    <span class="status-inactive">❌ Неактивна</span>
-                                {% elif license.hwid %}
-                                    <span class="status-active">✅ Активна</span>
-                                {% else %}
-                                    <span style="color: #667eea;">⏳ Ожидает</span>
-                                {% endif %}
+                                <span style="color: #667eea;">⏳ Ожидает</span>
                             {% endif %}
                         </td>
                         <td>
                             {% if license.expiry_date %}
-                                {% set expiry_utc = license.expiry_date.replace(tzinfo=timezone.utc) if license.expiry_date.tzinfo is None else license.expiry_date %}
-                                {% set is_expired = expiry_utc < now %}
-                                <span class="expiry-date {% if is_expired %}expired{% endif %}">
-                                    {{ license.expiry_date.strftime('%Y-%m-%d %H:%M') }}
-                                    {% if is_expired %} (Истекла){% endif %}
-                                </span>
+                                {% if license.expiry_date < now %}
+                                    <span class="expiry-date expired">
+                                        {{ license.expiry_date.strftime('%Y-%m-%d %H:%M') }} (Истекла)
+                                    </span>
+                                {% else %}
+                                    <span class="expiry-date">
+                                        {{ license.expiry_date.strftime('%Y-%m-%d %H:%M') }}
+                                    </span>
+                                {% endif %}
                             {% else %}
                                 <span style="color: #777;">—</span>
                             {% endif %}
                         </td>
                         <td>
-                            {% if license.expiry_date %}
-                                {% set expiry_utc = license.expiry_date.replace(tzinfo=timezone.utc) if license.expiry_date.tzinfo is None else license.expiry_date %}
-                                {% set is_expired = expiry_utc < now %}
-                                {% if is_expired %}
-                                    <button class="btn btn-toggle" disabled title="Нельзя активировать истекшую лицензию">⏰ Истекла</button>
-                                {% else %}
-                                    <button class="btn btn-toggle" onclick="toggleLicense({{ license.id }})">
-                                        {{ '❌ Деактивировать' if license.is_active else '✅ Активировать' }}
-                                    </button>
-                                {% endif %}
+                            {% if license.expiry_date and license.expiry_date < now %}
+                                <button class="btn btn-toggle" disabled title="Нельзя активировать истекшую лицензию">⏰ Истекла</button>
                             {% else %}
                                 <button class="btn btn-toggle" onclick="toggleLicense({{ license.id }})">
                                     {{ '❌ Деактивировать' if license.is_active else '✅ Активировать' }}

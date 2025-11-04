@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime, timezone
+from datetime import datetime
 import hashlib
 import os
 
@@ -72,13 +72,8 @@ def is_license_expired(license_obj):
     if not license_obj.expiry_date:
         return False
     
-    # Приводим обе даты к UTC для сравнения
-    expiry_utc = license_obj.expiry_date.replace(tzinfo=timezone.utc) if license_obj.expiry_date.tzinfo is None else license_obj.expiry_date
-    now_utc = datetime.now(timezone.utc)
+    is_expired = license_obj.expiry_date < datetime.utcnow()
     
-    is_expired = expiry_utc < now_utc
-    
-    # Автоматически деактивируем лицензию если она истекла
     if is_expired and license_obj.is_active:
         license_obj.is_active = False
         db.session.commit()
@@ -117,7 +112,6 @@ def activate_license(key, hwid, request):
         if not license_obj:
             return jsonify({'success': False, 'error': 'Invalid license key'})
         
-        # Проверяем истекла ли лицензия
         if is_license_expired(license_obj):
             return jsonify({'success': False, 'error': 'License has expired and was deactivated'})
         
@@ -167,7 +161,6 @@ def validate_license(key, hwid):
         if not license_obj:
             return jsonify({'valid': False, 'error': 'Invalid license key'})
         
-        # Проверяем истекла ли лицензия
         if is_license_expired(license_obj):
             return jsonify({'valid': False, 'error': 'License has expired and was deactivated'})
         
@@ -222,15 +215,13 @@ def admin_dashboard():
             'pending_requests': ActivationRequest.query.filter_by(status='pending').count()
         }
         
-        # Проверяем все лицензии на истечение срока
-        now_utc = datetime.now(timezone.utc)
+        now = datetime.utcnow()
+        
         expired_count = 0
         for license in licenses:
-            if license.expiry_date:
-                expiry_utc = license.expiry_date.replace(tzinfo=timezone.utc) if license.expiry_date.tzinfo is None else license.expiry_date
-                if expiry_utc < now_utc and license.is_active:
-                    license.is_active = False
-                    expired_count += 1
+            if license.expiry_date and license.expiry_date < now and license.is_active:
+                license.is_active = False
+                expired_count += 1
         
         if expired_count > 0:
             db.session.commit()
@@ -240,7 +231,7 @@ def admin_dashboard():
                              licenses=licenses, 
                              activation_requests=activation_requests,
                              stats=stats,
-                             now=now_utc)
+                             now=now)
     except Exception as e:
         return f"Error loading dashboard: {str(e)}", 500
 
@@ -331,7 +322,6 @@ def process_request(request_id):
         if action == 'approve':
             license_obj = License.query.filter_by(key=activation_req.key).first()
             if license_obj:
-                # Проверяем не истекла ли лицензия перед активацией
                 if is_license_expired(license_obj):
                     return jsonify({'success': False, 'error': 'Cannot approve - license has expired'})
                 
@@ -360,7 +350,6 @@ def toggle_license(license_id):
     try:
         license_obj = License.query.get_or_404(license_id)
         
-        # Не позволяем активировать истекшую лицензию
         if is_license_expired(license_obj) and not license_obj.is_active:
             return jsonify({'success': False, 'error': 'Cannot activate expired license'})
         
@@ -395,7 +384,6 @@ def index():
         'database': 'PostgreSQL' if os.environ.get('DATABASE_URL') else 'SQLite'
     })
 
-# Health check endpoint for Render
 @app.route('/health')
 def health():
     return jsonify({'status': 'healthy', 'timestamp': datetime.utcnow().isoformat()})
