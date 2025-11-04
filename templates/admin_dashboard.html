@@ -352,8 +352,7 @@
                         </td>
                         <td>
                             {% if license.activation_date %}
-                                {% set local_activation = license.activation_date.replace(tzinfo=timezone.utc).astimezone() %}
-                                {{ local_activation.strftime('%Y-%m-%d %H:%M') }}
+                                {{ license.activation_date.strftime('%Y-%m-%d %H:%M') }}
                             {% else %}
                                 <span style="color: #777;">—</span>
                             {% endif %}
@@ -373,7 +372,6 @@
                 </tbody>
             </table>
         </div>
-    </div>
 
     <script>
         // Add single license
