@@ -227,11 +227,14 @@ def admin_dashboard():
             db.session.commit()
             print(f"⚠️ Automatically deactivated {expired_count} expired licenses")
         
+        # Добавляем timezone для шаблона
+        from datetime import timezone
         return render_template('admin_dashboard.html', 
                              licenses=licenses, 
                              activation_requests=activation_requests,
                              stats=stats,
-                             now=now)
+                             now=now,
+                             timezone=timezone)
     except Exception as e:
         return f"Error loading dashboard: {str(e)}", 500
 
