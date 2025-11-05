@@ -113,10 +113,10 @@ def is_license_expired(license_obj):
     return is_expired
 
 def get_local_time(utc_time):
-    """Конвертирует UTC время в локальное (UTC+3)"""
+    """Конвертирует UTC время в локальное (UTC+2 для Калининграда)"""
     if not utc_time:
         return None
-    return utc_time.replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=3)))
+    return utc_time.replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=2)))
 
 # API endpoints
 @app.route('/license', methods=['POST'])
@@ -295,9 +295,12 @@ def add_license():
         expiry_date = None
         if expiry_date_str:
             try:
-                if 'Z' not in expiry_date_str and '+' not in expiry_date_str:
-                    expiry_date_str += 'Z'
-                expiry_date = datetime.fromisoformat(expiry_date_str.replace('Z', '+00:00'))
+                # Убираем 'Z' если есть и парсим как локальное время
+                expiry_date_str = expiry_date_str.replace('Z', '')
+                # Парсим как наивное datetime (без информации о часовом поясе)
+                expiry_date = datetime.fromisoformat(expiry_date_str)
+                # Конвертируем в UTC
+                expiry_date = expiry_date.replace(tzinfo=None)  # Убираем часовой пояс если есть
             except ValueError as e:
                 return jsonify({'success': False, 'error': f'Invalid expiry date format: {str(e)}'})
         
