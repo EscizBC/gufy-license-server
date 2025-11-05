@@ -3,6 +3,9 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 import hashlib
 import os
+import threading
+import time
+import atexit
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-me')
@@ -67,27 +70,60 @@ with app.app_context():
     except Exception as e:
         print(f"❌ Database initialization error: {e}")
 
-def check_all_licenses_expiry():
-    """Проверяет все лицензии на истечение срока"""
-    try:
-        licenses = License.query.all()
-        now = datetime.utcnow()
-        expired_count = 0
-        
-        for license in licenses:
-            if license.expiry_date and license.expiry_date < now and license.is_active:
-                license.is_active = False
-                expired_count += 1
-                print(f"⏰ License {license.key} expired and deactivated")
-        
-        if expired_count > 0:
-            db.session.commit()
-            print(f"✅ Deactivated {expired_count} expired licenses")
-            
-        return expired_count
-    except Exception as e:
-        print(f"❌ Error checking licenses expiry: {e}")
-        return 0
+# Фоновая проверка лицензий
+class LicenseChecker:
+    def __init__(self):
+        self.running = True
+        self.thread = None
+    
+    def start(self):
+        """Запускает фоновую проверку лицензий"""
+        self.thread = threading.Thread(target=self._check_loop, daemon=True)
+        self.thread.start()
+        print("✅ Background license checker started")
+    
+    def stop(self):
+        """Останавливает фоновую проверку"""
+        self.running = False
+        if self.thread:
+            self.thread.join()
+        print("❌ Background license checker stopped")
+    
+    def _check_loop(self):
+        """Бесконечный цикл проверки лицензий"""
+        while self.running:
+            try:
+                self.check_all_licenses_expiry()
+                time.sleep(60)  # Проверяем каждую минуту
+            except Exception as e:
+                print(f"❌ Error in license checker: {e}")
+                time.sleep(300)  # Ждем 5 минут при ошибке
+    
+    def check_all_licenses_expiry(self):
+        """Проверяет все лицензии на истечение срока"""
+        try:
+            with app.app_context():
+                licenses = License.query.all()
+                now = datetime.utcnow()
+                expired_count = 0
+                
+                for license in licenses:
+                    if license.expiry_date and license.expiry_date < now and license.is_active:
+                        license.is_active = False
+                        expired_count += 1
+                        print(f"⏰ License {license.key} expired and deactivated")
+                
+                if expired_count > 0:
+                    db.session.commit()
+                    print(f"✅ Deactivated {expired_count} expired licenses")
+                
+                return expired_count
+        except Exception as e:
+            print(f"❌ Error checking licenses expiry: {e}")
+            return 0
+
+# Создаем и запускаем проверщик
+license_checker = LicenseChecker()
 
 def is_license_expired(license_obj):
     """Проверяет истекла ли лицензия и автоматически деактивирует её"""
@@ -107,9 +143,6 @@ def is_license_expired(license_obj):
 # API endpoints
 @app.route('/license', methods=['POST'])
 def license_api():
-    # Сначала проверяем все лицензии на истечение срока
-    check_all_licenses_expiry()
-    
     try:
         data = request.get_json()
         if not data:
@@ -132,9 +165,6 @@ def license_api():
         return jsonify({'success': False, 'error': f'Server error: {str(e)}'})
 
 def activate_license(key, hwid, request):
-    # Проверяем все лицензии на истечение срока
-    check_all_licenses_expiry()
-    
     try:
         license_obj = License.query.filter_by(key=key).first()
         
@@ -184,9 +214,6 @@ def activate_license(key, hwid, request):
         return jsonify({'success': False, 'error': f'Activation error: {str(e)}'})
 
 def validate_license(key, hwid):
-    # Проверяем все лицензии на истечение срока
-    check_all_licenses_expiry()
-    
     try:
         license_obj = License.query.filter_by(key=key).first()
         
@@ -239,8 +266,8 @@ def admin_dashboard():
         return redirect(url_for('admin_login'))
     
     try:
-        # Проверяем все лицензии на истечение срока
-        check_all_licenses_expiry()
+        # Принудительно проверяем лицензии при загрузке админки
+        license_checker.check_all_licenses_expiry()
         
         licenses = License.query.all()
         activation_requests = ActivationRequest.query.filter_by(status='pending').all()
@@ -341,9 +368,6 @@ def process_request(request_id):
         return jsonify({'success': False, 'error': 'Not authorized'})
     
     try:
-        # Проверяем все лицензии на истечение срока
-        check_all_licenses_expiry()
-        
         action = request.form.get('action')
         activation_req = ActivationRequest.query.get_or_404(request_id)
         
@@ -376,9 +400,6 @@ def toggle_license(license_id):
         return jsonify({'success': False, 'error': 'Not authorized'})
     
     try:
-        # Проверяем все лицензии на истечение срока
-        check_all_licenses_expiry()
-        
         license_obj = License.query.get_or_404(license_id)
         
         if is_license_expired(license_obj) and not license_obj.is_active:
@@ -418,6 +439,12 @@ def index():
 @app.route('/health')
 def health():
     return jsonify({'status': 'healthy', 'timestamp': datetime.utcnow().isoformat()})
+
+# Запускаем фоновую проверку при старте приложения
+license_checker.start()
+
+# Останавливаем при выходе
+atexit.register(license_checker.stop)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
