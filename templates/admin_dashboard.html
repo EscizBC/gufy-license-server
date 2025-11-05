@@ -116,6 +116,7 @@
         .btn-toggle { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
         .btn-delete { background: linear-gradient(135deg, #dc3545, #c82333); color: white; }
         .btn-add { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 12px 20px; }
+        .btn-check { background: linear-gradient(135deg, #ff9f43, #ff7f00); color: white; padding: 12px 20px; }
         .btn-copy { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 6px 12px; font-size: 10px; }
         .btn:hover {
             transform: translateY(-2px);
@@ -194,6 +195,14 @@
         .copy-btn {
             margin-left: 5px;
             cursor: pointer;
+        }
+        .force-check-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: rgba(255, 159, 67, 0.1);
+            border: 1px solid #ff9f43;
+            border-radius: 8px;
+            text-align: center;
         }
     </style>
 </head>
@@ -293,6 +302,17 @@
         <!-- License Management -->
         <div class="section full-width">
             <h2>🔑 Управление лицензиями</h2>
+            
+            <!-- Кнопка принудительной проверки -->
+            <div class="force-check-section">
+                <button class="btn btn-check" onclick="forceCheckExpired()">
+                    🔄 Принудительно проверить истекшие лицензии
+                </button>
+                <p style="margin-top: 10px; font-size: 12px; color: #ff9f43;">
+                    Проверяет все лицензии и деактивирует истекшие
+                </p>
+            </div>
+
             <table>
                 <thead>
                     <tr>
@@ -372,6 +392,7 @@
                 </tbody>
             </table>
         </div>
+    </div>
 
     <script>
         // Add single license
@@ -508,6 +529,26 @@
             }, function(err) {
                 alert('❌ Ошибка копирования: ' + err);
             });
+        }
+
+        // Force check expired licenses
+        async function forceCheckExpired() {
+            try {
+                const response = await fetch('/admin/check_expired', {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✅ ' + result.message);
+                    location.reload();
+                } else {
+                    alert('❌ Ошибка: ' + result.error);
+                }
+            } catch (error) {
+                alert('❌ Ошибка сети: ' + error.message);
+            }
         }
 
         // Set min datetime for expiry date to current time
