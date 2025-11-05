@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import hashlib
 import os
 import threading
@@ -93,31 +93,31 @@ class LicenseChecker:
         """Бесконечный цикл проверки лицензий"""
         while self.running:
             try:
-                self.check_all_licenses_expiry()
-                time.sleep(60)  # Проверяем каждую минуту
+                with app.app_context():
+                    self.check_all_licenses_expiry()
+                time.sleep(30)  # Проверяем каждые 30 секунд
             except Exception as e:
                 print(f"❌ Error in license checker: {e}")
-                time.sleep(300)  # Ждем 5 минут при ошибке
+                time.sleep(60)  # Ждем 1 минуту при ошибке
     
     def check_all_licenses_expiry(self):
         """Проверяет все лицензии на истечение срока"""
         try:
-            with app.app_context():
-                licenses = License.query.all()
-                now = datetime.utcnow()
-                expired_count = 0
-                
-                for license in licenses:
-                    if license.expiry_date and license.expiry_date < now and license.is_active:
-                        license.is_active = False
-                        expired_count += 1
-                        print(f"⏰ License {license.key} expired and deactivated")
-                
-                if expired_count > 0:
-                    db.session.commit()
-                    print(f"✅ Deactivated {expired_count} expired licenses")
-                
-                return expired_count
+            licenses = License.query.all()
+            now = datetime.utcnow()
+            expired_count = 0
+            
+            for license in licenses:
+                if license.expiry_date and license.expiry_date < now and license.is_active:
+                    license.is_active = False
+                    expired_count += 1
+                    print(f"⏰ License {license.key} expired and deactivated")
+            
+            if expired_count > 0:
+                db.session.commit()
+                print(f"✅ Deactivated {expired_count} expired licenses")
+            
+            return expired_count
         except Exception as e:
             print(f"❌ Error checking licenses expiry: {e}")
             return 0
@@ -139,6 +139,12 @@ def is_license_expired(license_obj):
         print(f"⏰ License {license_obj.key} automatically deactivated due to expiry")
     
     return is_expired
+
+def get_local_time(utc_time):
+    """Конвертирует UTC время в локальное (UTC+3)"""
+    if not utc_time:
+        return None
+    return utc_time + timedelta(hours=3)
 
 # API endpoints
 @app.route('/license', methods=['POST'])
@@ -283,7 +289,8 @@ def admin_dashboard():
                              licenses=licenses, 
                              activation_requests=activation_requests,
                              stats=stats,
-                             now=now)
+                             now=now,
+                             get_local_time=get_local_time)
     except Exception as e:
         return f"Error loading dashboard: {str(e)}", 500
 

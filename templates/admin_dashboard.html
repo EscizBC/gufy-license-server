@@ -352,7 +352,7 @@
                         </td>
                         <td>
                             {% if license.activation_date %}
-                                {{ license.activation_date.strftime('%Y-%m-%d %H:%M') }}
+                                {{ get_local_time(license.activation_date).strftime('%Y-%m-%d %H:%M') }}
                             {% else %}
                                 <span style="color: #777;">—</span>
                             {% endif %}
