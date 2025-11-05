@@ -285,7 +285,7 @@
                             <button class="btn btn-copy" onclick="copyToClipboard('{{ req.hwid }}')">📋</button>
                         </td>
                         <td>{{ req.ip_address }}</td>
-                        <td>{{ req.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>{{ get_local_time(req.created_at).strftime('%Y-%m-%d %H:%M') }}</td>
                         <td>
                             <button class="btn btn-approve" onclick="processRequest({{ req.id }}, 'approve')">✅ Одобрить</button>
                             <button class="btn btn-reject" onclick="processRequest({{ req.id }}, 'reject')">❌ Отклонить</button>
@@ -359,11 +359,11 @@
                             {% if license.expiry_date %}
                                 {% if license.expiry_date < now %}
                                     <span class="expiry-date expired">
-                                        {{ license.expiry_date.strftime('%Y-%m-%d %H:%M') }} (Истекла)
+                                        {{ get_local_time(license.expiry_date).strftime('%Y-%m-%d %H:%M') }} (Истекла)
                                     </span>
                                 {% else %}
                                     <span class="expiry-date">
-                                        {{ license.expiry_date.strftime('%Y-%m-%d %H:%M') }}
+                                        {{ get_local_time(license.expiry_date).strftime('%Y-%m-%d %H:%M') }}
                                     </span>
                                 {% endif %}
                             {% else %}

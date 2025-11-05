@@ -83,10 +83,13 @@ def check_all_licenses_expiry():
         if expired_count > 0:
             db.session.commit()
             print(f"✅ Deactivated {expired_count} expired licenses")
+        else:
+            print("✅ No expired licenses found")
             
         return expired_count
     except Exception as e:
         print(f"❌ Error checking licenses expiry: {e}")
+        db.session.rollback()
         return 0
 
 def is_license_expired(license_obj):
@@ -100,8 +103,12 @@ def is_license_expired(license_obj):
     # Немедленно деактивируем если истекла
     if is_expired and license_obj.is_active:
         license_obj.is_active = False
-        db.session.commit()
-        print(f"⏰ License {license_obj.key} automatically deactivated due to expiry")
+        try:
+            db.session.commit()
+            print(f"⏰ License {license_obj.key} automatically deactivated due to expiry")
+        except Exception as e:
+            print(f"❌ Error deactivating expired license: {e}")
+            db.session.rollback()
     
     return is_expired
 
@@ -109,7 +116,7 @@ def get_local_time(utc_time):
     """Конвертирует UTC время в локальное (UTC+3)"""
     if not utc_time:
         return None
-    return utc_time + timedelta(hours=3)
+    return utc_time.replace(tzinfo=timezone.utc).astimezone(timezone(timedelta(hours=3)))
 
 # API endpoints
 @app.route('/license', methods=['POST'])
@@ -186,6 +193,7 @@ def activate_license(key, hwid, request):
             'license_data': {'status': 'active'}
         })
     except Exception as e:
+        db.session.rollback()
         return jsonify({'success': False, 'error': f'Activation error: {str(e)}'})
 
 def validate_license(key, hwid):
@@ -213,6 +221,7 @@ def validate_license(key, hwid):
         
         return jsonify({'valid': True, 'message': 'License is valid'})
     except Exception as e:
+        db.session.rollback()
         return jsonify({'valid': False, 'error': f'Validation error: {str(e)}'})
 
 # Админ панель
@@ -302,6 +311,7 @@ def add_license():
         
         return jsonify({'success': True, 'message': 'License added successfully'})
     except Exception as e:
+        db.session.rollback()
         return jsonify({'success': False, 'error': f'Error adding license: {str(e)}'})
 
 @app.route('/admin/bulk_add_licenses', methods=['POST'])
@@ -337,6 +347,7 @@ def bulk_add_licenses():
             'errors': errors
         })
     except Exception as e:
+        db.session.rollback()
         return jsonify({'success': False, 'error': f'Error in bulk add: {str(e)}'})
 
 @app.route('/admin/process_request/<int:request_id>', methods=['POST'])
@@ -372,6 +383,7 @@ def process_request(request_id):
         
         return jsonify({'success': False, 'error': 'Invalid action'})
     except Exception as e:
+        db.session.rollback()
         return jsonify({'success': False, 'error': f'Error processing request: {str(e)}'})
 
 @app.route('/admin/toggle_license/<int:license_id>', methods=['POST'])
@@ -394,6 +406,7 @@ def toggle_license(license_id):
         status = "activated" if license_obj.is_active else "deactivated"
         return jsonify({'success': True, 'message': f'License {status}'})
     except Exception as e:
+        db.session.rollback()
         return jsonify({'success': False, 'error': f'Error toggling license: {str(e)}'})
 
 @app.route('/admin/delete_license/<int:license_id>', methods=['POST'])
@@ -408,6 +421,7 @@ def delete_license(license_id):
         
         return jsonify({'success': True, 'message': 'License deleted'})
     except Exception as e:
+        db.session.rollback()
         return jsonify({'success': False, 'error': f'Error deleting license: {str(e)}'})
 
 # Специальный endpoint для принудительной проверки
