@@ -283,6 +283,8 @@ def add_license():
         key = request.form.get('key')
         expiry_date_str = request.form.get('expiry_date')
         
+        print(f"DEBUG: Received expiry_date_str: {expiry_date_str}")
+        
         if not key:
             return jsonify({'success': False, 'error': 'No key provided'})
         
@@ -295,13 +297,16 @@ def add_license():
         expiry_date = None
         if expiry_date_str:
             try:
-                # Убираем 'Z' если есть и парсим как локальное время
-                expiry_date_str = expiry_date_str.replace('Z', '')
-                # Парсим как наивное datetime (без информации о часовом поясе)
-                expiry_date = datetime.fromisoformat(expiry_date_str)
-                # Конвертируем в UTC
-                expiry_date = expiry_date.replace(tzinfo=None)  # Убираем часовой пояс если есть
+                print(f"DEBUG: Processing expiry date: {expiry_date_str}")
+                
+                # Парсим локальное время (из формы в UTC+2) и конвертируем в UTC
+                local_dt = datetime.fromisoformat(expiry_date_str)
+                # Конвертируем в UTC (вычитаем 2 часа для Калининграда)
+                expiry_date = local_dt - timedelta(hours=2)
+                print(f"DEBUG: Parsed expiry_date (UTC): {expiry_date}")
+                
             except ValueError as e:
+                print(f"DEBUG: Error parsing date: {e}")
                 return jsonify({'success': False, 'error': f'Invalid expiry date format: {str(e)}'})
         
         license_obj = License(
@@ -312,9 +317,12 @@ def add_license():
         db.session.add(license_obj)
         db.session.commit()
         
+        print(f"DEBUG: License created with expiry: {expiry_date}")
         return jsonify({'success': True, 'message': 'License added successfully'})
+        
     except Exception as e:
         db.session.rollback()
+        print(f"DEBUG: Exception in add_license: {e}")
         return jsonify({'success': False, 'error': f'Error adding license: {str(e)}'})
 
 @app.route('/admin/bulk_add_licenses', methods=['POST'])

@@ -240,7 +240,7 @@
                     </div>
                     <div class="form-group">
                         <label>Срок действия до:</label>
-                        <input type="datetime-local" name="expiry_date">
+                        <input type="datetime-local" name="expiry_date" id="expiry_date">
                     </div>
                 </div>
                 
@@ -395,11 +395,19 @@
     </div>
 
     <script>
-        // Add single license
+        // Add single license with UTC time conversion
         document.getElementById('addLicenseForm').onsubmit = async function(e) {
             e.preventDefault();
             
             const formData = new FormData(this);
+            
+            // Конвертируем локальное время в UTC для поля expiry_date
+            const expiryDateInput = document.getElementById('expiry_date');
+            if (expiryDateInput && expiryDateInput.value) {
+                // Браузер автоматически конвертирует локальное время в UTC при отправке
+                // Мы оставляем как есть, а на сервере вычитаем 2 часа
+                console.log('Local time from browser:', expiryDateInput.value);
+            }
             
             try {
                 const response = await fetch('/admin/add_license', {
@@ -555,7 +563,7 @@
         document.addEventListener('DOMContentLoaded', function() {
             const now = new Date();
             now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-            const datetimeInput = document.querySelector('input[type="datetime-local"]');
+            const datetimeInput = document.getElementById('expiry_date');
             if (datetimeInput) {
                 datetimeInput.min = now.toISOString().slice(0, 16);
             }
