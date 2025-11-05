@@ -36,6 +36,8 @@ class License(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_validation = db.Column(db.DateTime, nullable=True)
     expiry_date = db.Column(db.DateTime, nullable=True)
+    # Добавляем поле для отслеживания продлений
+    original_expiry_date = db.Column(db.DateTime, nullable=True)
 
 class ActivationRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -55,6 +57,22 @@ class AdminUser(db.Model):
 with app.app_context():
     try:
         db.create_all()
+        
+        # Миграция для добавления нового поля
+        try:
+            # Проверяем существует ли поле original_expiry_date
+            inspector = db.inspect(db.engine)
+            columns = [col['name'] for col in inspector.get_columns('license')]
+            
+            if 'original_expiry_date' not in columns:
+                print("🔄 Adding original_expiry_date column to license table...")
+                db.session.execute('ALTER TABLE license ADD COLUMN original_expiry_date DATETIME')
+                db.session.commit()
+                print("✅ Column added successfully")
+        except Exception as e:
+            print(f"⚠️ Could not add column (might already exist): {e}")
+            db.session.rollback()
+        
         if not AdminUser.query.first():
             default_password = os.environ.get('ADMIN_PASSWORD', 'Pfizer!Soft2025')
             admin = AdminUser(
@@ -434,6 +452,52 @@ def delete_license(license_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'error': f'Error deleting license: {str(e)}'})
+
+@app.route('/admin/renew_license/<int:license_id>', methods=['POST'])
+def renew_license(license_id):
+    if not session.get('admin_logged_in'):
+        return jsonify({'success': False, 'error': 'Not authorized'})
+    
+    try:
+        data = request.get_json() if request.is_json else request.form
+        new_expiry_str = data.get('new_expiry_date')
+        
+        if not new_expiry_str:
+            return jsonify({'success': False, 'error': 'No new expiry date provided'})
+        
+        license_obj = License.query.get_or_404(license_id)
+        
+        # Сохраняем оригинальную дату истечения при первом продлении
+        if not license_obj.original_expiry_date and license_obj.expiry_date:
+            license_obj.original_expiry_date = license_obj.expiry_date
+        
+        # Парсим новую дату и конвертируем в UTC
+        try:
+            local_dt = datetime.fromisoformat(new_expiry_str)
+            new_expiry_date = local_dt - timedelta(hours=2)  # Конвертируем в UTC
+            print(f"DEBUG: New expiry date (UTC): {new_expiry_date}")
+        except ValueError as e:
+            return jsonify({'success': False, 'error': f'Invalid expiry date format: {str(e)}'})
+        
+        # Проверяем что новая дата в будущем
+        if new_expiry_date <= datetime.utcnow():
+            return jsonify({'success': False, 'error': 'New expiry date must be in the future'})
+        
+        # Обновляем дату истечения и активируем лицензию
+        license_obj.expiry_date = new_expiry_date
+        license_obj.is_active = True
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True, 
+            'message': f'License renewed until {get_local_time(new_expiry_date).strftime("%Y-%m-%d %H:%M")}',
+            'new_expiry': get_local_time(new_expiry_date).strftime("%Y-%m-%d %H:%M")
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': f'Error renewing license: {str(e)}'})
 
 # Специальный endpoint для принудительной проверки
 @app.route('/admin/check_expired', methods=['POST'])

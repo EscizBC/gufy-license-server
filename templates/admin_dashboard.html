@@ -118,6 +118,7 @@
         .btn-add { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 12px 20px; }
         .btn-check { background: linear-gradient(135deg, #ff9f43, #ff7f00); color: white; padding: 12px 20px; }
         .btn-copy { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 6px 12px; font-size: 10px; }
+        .btn-renew { background: linear-gradient(135deg, #ff9f43, #ff7f00); color: white; }
         .btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 8px rgba(0,0,0,0.3);
@@ -203,6 +204,26 @@
             border: 1px solid #ff9f43;
             border-radius: 8px;
             text-align: center;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+        }
+        .modal-content {
+            background: rgba(42, 42, 42, 0.95);
+            margin: 10% auto;
+            padding: 25px;
+            border-radius: 12px;
+            border: 3px solid #667eea;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
         }
     </style>
 </head>
@@ -379,18 +400,49 @@
                         </td>
                         <td>
                             {% if license.expiry_date and license.expiry_date < now %}
-                                <button class="btn btn-toggle" disabled title="Нельзя активировать истекшую лицензию">⏰ Истекла</button>
+                                <button class="btn btn-renew" onclick="showRenewModal({{ license.id }}, '{{ get_local_time(license.expiry_date).strftime('%Y-%m-%d %H:%M') if license.expiry_date }}')">🔄 Продлить</button>
+                                <button class="btn btn-delete" onclick="deleteLicense({{ license.id }})">🗑️ Удалить</button>
                             {% else %}
-                                <button class="btn btn-toggle" onclick="toggleLicense({{ license.id }})">
-                                    {{ '❌ Деактивировать' if license.is_active else '✅ Активировать' }}
-                                </button>
+                                {% if license.expiry_date and license.expiry_date < now %}
+                                    <button class="btn btn-toggle" disabled title="Нельзя активировать истекшую лицензию">⏰ Истекла</button>
+                                {% else %}
+                                    <button class="btn btn-toggle" onclick="toggleLicense({{ license.id }})">
+                                        {{ '❌ Деактивировать' if license.is_active else '✅ Активировать' }}
+                                    </button>
+                                {% endif %}
+                                <button class="btn btn-delete" onclick="deleteLicense({{ license.id }})">🗑️ Удалить</button>
                             {% endif %}
-                            <button class="btn btn-delete" onclick="deleteLicense({{ license.id }})">🗑️ Удалить</button>
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- Modal for license renewal -->
+    <div id="renewModal" class="modal">
+        <div class="modal-content">
+            <h2 style="color: #667eea; margin-bottom: 20px;">🔄 Продление лицензии</h2>
+            
+            <div class="form-group">
+                <label>Текущая дата истечения:</label>
+                <div style="padding: 10px; background: rgba(0,0,0,0.3); border-radius: 6px; margin-bottom: 15px;">
+                    <span id="currentExpiry" style="color: #ff9f43; font-weight: bold;"></span>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Новая дата истечения:</label>
+                <input type="datetime-local" id="newExpiryDate" required>
+            </div>
+            
+            <input type="hidden" id="renewLicenseId">
+            
+            <div style="display: flex; gap: 10px; margin-top: 25px;">
+                <button onclick="renewLicense()" class="btn" style="background: linear-gradient(135deg, #28a428, #20c997); flex: 1;">✅ Продлить</button>
+                <button onclick="closeRenewModal()" class="btn" style="background: linear-gradient(135deg, #6c757d, #5a6268); flex: 1;">❌ Отмена</button>
+            </div>
         </div>
     </div>
 
@@ -556,6 +608,78 @@
                 }
             } catch (error) {
                 alert('❌ Ошибка сети: ' + error.message);
+            }
+        }
+
+        // Function to show renew license modal
+        function showRenewModal(licenseId, currentExpiry) {
+            const modal = document.getElementById('renewModal');
+            const licenseIdInput = document.getElementById('renewLicenseId');
+            const currentExpirySpan = document.getElementById('currentExpiry');
+            
+            licenseIdInput.value = licenseId;
+            
+            if (currentExpiry && currentExpiry !== 'None') {
+                currentExpirySpan.textContent = currentExpiry;
+            } else {
+                currentExpirySpan.textContent = 'не установлена';
+            }
+            
+            // Set min datetime for renewal (current time)
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            const datetimeInput = document.getElementById('newExpiryDate');
+            if (datetimeInput) {
+                datetimeInput.min = now.toISOString().slice(0, 16);
+                datetimeInput.value = ''; // Clear previous value
+            }
+            
+            modal.style.display = 'block';
+        }
+
+        // Function to close modal
+        function closeRenewModal() {
+            document.getElementById('renewModal').style.display = 'none';
+        }
+
+        // Function to renew license
+        async function renewLicense() {
+            const licenseId = document.getElementById('renewLicenseId').value;
+            const newExpiryDate = document.getElementById('newExpiryDate').value;
+            
+            if (!newExpiryDate) {
+                alert('❌ Пожалуйста, выберите новую дату истечения');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/admin/renew_license/${licenseId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: `new_expiry_date=${encodeURIComponent(newExpiryDate)}`
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✅ ' + result.message);
+                    closeRenewModal();
+                    location.reload();
+                } else {
+                    alert('❌ Ошибка: ' + result.error);
+                }
+            } catch (error) {
+                alert('❌ Ошибка сети: ' + error.message);
+            }
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('renewModal');
+            if (event.target === modal) {
+                closeRenewModal();
             }
         }
 
