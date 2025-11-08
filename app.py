@@ -507,6 +507,48 @@ def check_expired():
     expired_count = check_all_licenses_expiry()
     return jsonify({'success': True, 'message': f'Checked licenses. Deactivated: {expired_count}'})
 
+
+
+@app.route('/license/info', methods=['POST'])
+def license_info():
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'error': 'No JSON data provided'})
+            
+        key = data.get('key')
+        hwid = data.get('hwid')
+        
+        if not key:
+            return jsonify({'success': False, 'error': 'No key provided'})
+        
+        license_obj = License.query.filter_by(key=key).first()
+        
+        if not license_obj:
+            return jsonify({'success': False, 'error': 'Invalid license key'})
+        
+        # Проверяем HWID
+        if license_obj.hwid and license_obj.hwid != hwid:
+            return jsonify({'success': False, 'error': 'License not valid for this device'})
+        
+        # Форматируем информацию о лицензии
+        license_data = {
+            'key': license_obj.key,
+            'name': license_obj.name,
+            'is_active': license_obj.is_active,
+            'activation_date': license_obj.activation_date.isoformat() if license_obj.activation_date else None,
+            'expiry_date': license_obj.expiry_date.isoformat() if license_obj.expiry_date else None,
+            'created_at': license_obj.created_at.isoformat() if license_obj.created_at else None
+        }
+        
+        return jsonify({'success': True, 'license_data': license_data})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Server error: {str(e)}'})
+
+
+
+
 @app.route('/')
 def index():
     return jsonify({
